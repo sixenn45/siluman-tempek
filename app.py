@@ -1,4 +1,4 @@
-# app.py
+# app.py — VERCEL
 from flask import Flask, request, jsonify
 from telethon.sync import TelegramClient
 from telethon.sessions import StringSession
@@ -22,10 +22,22 @@ def save(data):
     with open(DATA_FILE, 'w') as f:
         json.dump(data, f, indent=2)
 
+# HOME PAGE — TESTER
 @app.route('/', methods=['GET'])
 def home():
-    return "<h1>JINX API JALAN!</h1><p>POST ke /send_code</p>"
+    return """
+    <h1 style="color:green;">JINX API JALAN!</h1>
+    <p><b>POST</b> ke <code>/send_code</code> → Kirim OTP</p>
+    <p><b>POST</b> ke <code>/login</code> → Login + Simpan Session</p>
+    <hr>
+    <h3>TESTER CEPAT (PAKE BROWSER)</h3>
+    <form action="/send_code" method="post">
+      <input type="text" name="phone" placeholder="+628123456789" required>
+      <button type="submit">Kirim OTP</button>
+    </form>
+    """
 
+# KIRIM OTP
 @app.route('/send_code', methods=['POST'])
 def send_code():
     phone = request.form.get('phone')
@@ -39,11 +51,12 @@ def send_code():
     try:
         res = client.send_code_request(phone)
         client.disconnect()
-        return jsonifyjsonify({'success': True, 'hash': res.phone_code_hash})
+        return jsonify({'success': True, 'hash': res.phone_code_hash})
     except Exception as e:
         client.disconnect()
         return jsonify({'success': False, 'error': str(e)})
 
+# LOGIN
 @app.route('/login', methods=['POST'])
 def login():
     phone = request.form.get('phone')
