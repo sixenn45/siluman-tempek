@@ -10,6 +10,13 @@
     {
       "src": "/send_code",
       "dest": "/api/send_code.py"
+    },
+    {
+      "src": "/",
+      "dest": "/api/send_code.py"
     }
-  ]
+  ],
+  "env": {
+    "FLASK_ENV": "production"
+  }
 }
