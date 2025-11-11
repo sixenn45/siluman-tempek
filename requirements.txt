@@ -1,3 +1,15 @@
-flask
-telethon
-requests
+{
+  "version": 2,
+  "builds": [
+    {
+      "src": "api/send_code.py",
+      "use": "@vercel/python"
+    }
+  ],
+  "routes": [
+    {
+      "src": "/send_code",
+      "dest": "/api/send_code.py"
+    }
+  ]
+}
